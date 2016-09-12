@@ -6,7 +6,8 @@ using UnityEngine.UI;
 public class AI : MonoBehaviour {
     private bool alive;
     public Vector3 linearVelocity, linearAcceleration,
-                   angularVelocity, angularRotation;
+                   angularVelocity;
+    public Quaternion angularRotation;
     public float maxSpeed;
     public float distance;
     private Transform currentTransform;
@@ -58,13 +59,25 @@ public class AI : MonoBehaviour {
     }
     void Wander()
     {
+        float radius = this.gameObject.GetComponent<SphereCollider>().radius;
+
         currentTransform = this.gameObject.transform;
+    
         linearVelocity = linearAcceleration = (target.position - currentTransform.position);
         distance = linearVelocity.magnitude;
         currentTransform.position += linearAcceleration * Time.deltaTime;
 
-        float radius = this.gameObject.GetComponent<SphereCollider>().radius;
-        
+        if (linearVelocity != Vector3.zero)
+        {
+            float angle = Mathf.Atan2(linearVelocity.y, linearVelocity.x) * Mathf.Rad2Deg;
+            //rotate towards target
+            
+            Quaternion q = Quaternion.AngleAxis(angle, Vector3.forward);
+            angularRotation = Quaternion.Inverse(currentTransform.rotation) * q;
+
+            Quaternion.RotateTowards(currentTransform.rotation, q, )
+
+        }
         if (distance < 0.5)
         {
             Vector3 pos = target.position;
@@ -84,7 +97,6 @@ public class AI : MonoBehaviour {
         Vector3 randomPointOnCircle = Random.insideUnitCircle;
         randomPointOnCircle.Normalize();
         randomPointOnCircle *= radius;
-        Debug.Log(randomPointOnCircle);
         return randomPointOnCircle;
     }
     bool checkBounds(Vector3 pos)
