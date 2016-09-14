@@ -8,18 +8,28 @@ public class AI : MonoBehaviour {
     public Vector3 linearVelocity, linearAcceleration,
                    angularVelocity;
     public Quaternion angularRotation;
+
+    public Vector3 maxLinearVelocity;
+    public Vector3 maxLinearAcceleration;
+    public float maxRotationSpeed = 10.0f;
+    private GameObject circle;
+    public float targetDistance;
     public float maxSpeed;
     public float distance;
     private Transform currentTransform;
     public Transform target;
+    public Vector3 dest;
+    public GameObject huntersTarget;
     public GameObject[] path;
     public Camera cam;
-    private float height;
-    private float width;
     public GameObject label;
+    public string TYPE;
+    int dir;
     public enum State
     {
         WANDERING,
+        SEEKING,
+        FLEEING,
         HUNTING,
         PURSUING,
         PATHFOLLOWING
@@ -28,10 +38,21 @@ public class AI : MonoBehaviour {
 
     // Use this for initialization
     void Start () {
+        
+        dir = 1;
         alive = true;
-        target = GameObject.Find("wanderTarget").transform;
-        // currentTransform = GameObject.Find("Hunter").transform;
-        // Debug.Log(currentTransform);
+        currentTransform = this.gameObject.transform;
+        if  (state == State.WANDERING)
+        {
+            huntersTarget = GameObject.FindWithTag("hunterTarget");
+            circle = huntersTarget;
+            //    huntersTarget.transform.position = huntersTarget.transform.position + (currentTransform.forward * targetDistance);
+            //   target = circle.transform;
+            //     target.position = new Vector3(currentTransform.position.x, currentTransform.position.y);
+            Vector3 circlePos = calculateTargetPosition(0.5f);
+            dest = target.transform.position + circlePos;
+            circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
+        }
         cam = Camera.main;
         StartCoroutine("FSM");
 	}
@@ -45,6 +66,12 @@ public class AI : MonoBehaviour {
                 case State.WANDERING:
                     Wander();
                     break;
+                case State.SEEKING:
+                    Seek();
+                    break;
+                case State.FLEEING:
+                    Flee();
+                    break;
             }
             yield return null;
         }
@@ -57,37 +84,54 @@ public class AI : MonoBehaviour {
     {
 
     }
+    void Flee()
+    {
+        linearAcceleration = currentTransform.position - dest;
+        linearVelocity = linearAcceleration;
+        currentTransform.position += linearVelocity * Time.deltaTime;
+        //clip to max acceleration
+        //clip to max speed
+        //angular acceleration = 0;
+    }
+    void Seek()
+    {
+        linearAcceleration = dest - currentTransform.position;
+        linearVelocity = linearAcceleration;
+        //clip to max acceleration
+        //clip to max speed
+        //angular acceleration = 0;
+        currentTransform.position += linearVelocity * Time.deltaTime;
+
+    }
     void Wander()
     {
+        
         float radius = this.gameObject.GetComponent<SphereCollider>().radius;
-
-        currentTransform = this.gameObject.transform;
-    
-        linearVelocity = linearAcceleration = (target.position - currentTransform.position);
+        linearAcceleration = (dest - currentTransform.position);
+        linearVelocity = linearAcceleration;
         distance = linearVelocity.magnitude;
-        currentTransform.position += linearAcceleration * Time.deltaTime;
+        currentTransform.position += linearVelocity * Time.deltaTime;
 
-        if (linearVelocity != Vector3.zero)
+        if (linearVelocity != Vector3.zero) align();
+        
+        if (distance < 0.5f)
         {
-            float angle = Mathf.Atan2(linearVelocity.y, linearVelocity.x) * Mathf.Rad2Deg;
-            //rotate towards target
-            
-            Quaternion q = Quaternion.AngleAxis(angle, Vector3.forward);
-            angularRotation = Quaternion.Inverse(currentTransform.rotation) * q;
+            // Vector3 angles = new Vector3(radius * Mathf.Cos(Random.Range(-1, 1) * Mathf.PI), radius * Mathf.Sin(Random.Range(-1, 1) * Mathf.PI));
+            Vector3 circlePos = calculateTargetPosition(0.5f);
+            circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
+            Vector2 temp = (Vector2)circle.transform.position + (Vector2)circlePos;
 
-            Quaternion.RotateTowards(currentTransform.rotation, q, )
-
-        }
-        if (distance < 0.5)
-        {
-            Vector3 pos = target.position;
-            bool check = checkBounds(pos);
+            bool check = checkBounds(temp);
             if (check)
             {
-                target.position += calculateTargetPosition(radius);
-            } else
+                circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance) * dir;
+                dest = (Vector2)circle.transform.position + (Vector2)circlePos;
+
+                //  Debug.DrawRay(transform.position, (dest.normalized), Color.green, 10f, false);
+            }
+            else
             {
-                target.position = new Vector3(0, 0);
+                dir *= -1;
             }
         }
     }
@@ -118,10 +162,13 @@ public class AI : MonoBehaviour {
 
         return true;
     }
-    void align(Quaternion target, Quaternion character)
+    void align()
     {
-        this.gameObject.transform.rotation = target * Quaternion.Inverse(character);
-
+        float angle = Mathf.Atan2(linearVelocity.y, linearVelocity.x) * Mathf.Rad2Deg;
+        //rotate towards target
+        Debug.Log(Vector3.right);
+        Quaternion q = Quaternion.AngleAxis(angle, Vector3.forward);
+        currentTransform.rotation = Quaternion.RotateTowards(currentTransform.rotation, q, maxRotationSpeed * Time.deltaTime);
     }
 }
    
