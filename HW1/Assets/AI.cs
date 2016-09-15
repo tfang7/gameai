@@ -8,23 +8,24 @@ public class AI : MonoBehaviour {
     public Vector3 linearVelocity, linearAcceleration,
                    angularVelocity;
     public Quaternion angularRotation;
-
     public Vector3 maxLinearVelocity;
     public Vector3 maxLinearAcceleration;
     public float maxRotationSpeed = 10.0f;
+
     private GameObject circle;
     public float targetDistance;
-    public float maxSpeed;
     public float distance;
+
     private Transform currentTransform;
-    public Transform target;
     public Vector3 dest;
+
+    public Transform target;
     public GameObject huntersTarget;
-    public GameObject[] path;
     public Camera cam;
     public GameObject label;
     public string TYPE;
     int dir;
+
     public enum State
     {
         WANDERING,
@@ -46,9 +47,6 @@ public class AI : MonoBehaviour {
         {
             huntersTarget = GameObject.FindWithTag("hunterTarget");
             circle = huntersTarget;
-            //    huntersTarget.transform.position = huntersTarget.transform.position + (currentTransform.forward * targetDistance);
-            //   target = circle.transform;
-            //     target.position = new Vector3(currentTransform.position.x, currentTransform.position.y);
             Vector3 circlePos = calculateTargetPosition(0.5f);
             dest = target.transform.position + circlePos;
             circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
@@ -86,17 +84,36 @@ public class AI : MonoBehaviour {
     }
     void Flee()
     {
+        dest = target.transform.position;
         linearAcceleration = currentTransform.position - dest;
-        linearVelocity = linearAcceleration;
-        currentTransform.position += linearVelocity * Time.deltaTime;
-        //clip to max acceleration
-        //clip to max speed
+        linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
+
+        linearVelocity += linearAcceleration;
+        linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
         //angular acceleration = 0;
+        align();
+        currentTransform.position += linearVelocity * Time.deltaTime;
+
     }
     void Seek()
     {
+        dest = target.transform.position;
         linearAcceleration = dest - currentTransform.position;
-        linearVelocity = linearAcceleration;
+        linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
+
+        linearVelocity += linearAcceleration;
+        linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
+        //angular acceleration = 0;
+        align();
+        currentTransform.position += linearVelocity * Time.deltaTime;
+
+        /*    linearAcceleration.x = Mathf.Clamp(linearAcceleration.x, 0, maxLinearAcceleration.x);
+            linearAcceleration.y = Mathf.Clamp(linearAcceleration.y, maxLinearAcceleration.y * -1, maxLinearAcceleration.y);
+
+            linearVelocity += linearAcceleration;
+            linearVelocity.x = Mathf.Clamp(linearVelocity.x, maxLinearVelocity.x * -1, maxLinearVelocity.x);
+            linearVelocity.y = Mathf.Clamp(linearVelocity.y, maxLinearVelocity.y * -1, maxLinearVelocity.y);*/
+
         //clip to max acceleration
         //clip to max speed
         //angular acceleration = 0;
@@ -116,7 +133,6 @@ public class AI : MonoBehaviour {
         
         if (distance < 0.5f)
         {
-            // Vector3 angles = new Vector3(radius * Mathf.Cos(Random.Range(-1, 1) * Mathf.PI), radius * Mathf.Sin(Random.Range(-1, 1) * Mathf.PI));
             Vector3 circlePos = calculateTargetPosition(0.5f);
             circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
             Vector2 temp = (Vector2)circle.transform.position + (Vector2)circlePos;
@@ -126,7 +142,6 @@ public class AI : MonoBehaviour {
             {
                 circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance) * dir;
                 dest = (Vector2)circle.transform.position + (Vector2)circlePos;
-
                 //  Debug.DrawRay(transform.position, (dest.normalized), Color.green, 10f, false);
             }
             else
@@ -142,6 +157,14 @@ public class AI : MonoBehaviour {
         randomPointOnCircle.Normalize();
         randomPointOnCircle *= radius;
         return randomPointOnCircle;
+    }
+    Vector3 clipValue(Vector3 toClip, Vector3 clipRange)
+    {
+        Vector3 res;
+        toClip.x = Mathf.Clamp(toClip.x, clipRange.x * -1, clipRange.x);
+        toClip.y = Mathf.Clamp(toClip.y, clipRange.y * -1, clipRange.y);
+        res = toClip;
+        return res;
     }
     bool checkBounds(Vector3 pos)
     {
