@@ -1,18 +1,19 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine.UI;
 
 
 public class AI : MonoBehaviour {
     private bool alive;
-    public Vector3 linearVelocity, linearAcceleration,
-                   angularVelocity;
-    public Quaternion angularRotation;
-    public Vector3 maxLinearVelocity;
-    public Vector3 maxLinearAcceleration;
-    public float maxRotationSpeed = 10.0f;
+    public Vector3 linearVelocity, linearAcceleration;
+    public float angularAcceleration, angularVelocity;
+    public Vector3 maxLinearVelocity, maxLinearAcceleration;
 
+    public float maxRotationSpeed = 10.0f;
     private GameObject circle;
+
     public float targetDistance;
     public float distance;
 
@@ -20,11 +21,15 @@ public class AI : MonoBehaviour {
     public Vector3 dest;
 
     public Transform target;
-    public GameObject huntersTarget;
+    public GameObject wanderTarget;
     public Camera cam;
     public GameObject label;
     public string TYPE;
+    private float radius;
     int dir;
+
+    private int pathIndex;
+    private GameObject[] pathPoints;
 
     public enum State
     {
@@ -42,16 +47,15 @@ public class AI : MonoBehaviour {
         
         dir = 1;
         alive = true;
+        radius = this.gameObject.GetComponent<SphereCollider>().radius / 2f;
+        pathIndex = 0;
         currentTransform = this.gameObject.transform;
-        if  (state == State.WANDERING)
-        {
-            huntersTarget = GameObject.FindWithTag("hunterTarget");
-            circle = huntersTarget;
-            Vector3 circlePos = calculateTargetPosition(0.5f);
-            dest = target.transform.position + circlePos;
-            circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
-        }
+        if (state == State.WANDERING) setWanderTarget();
         cam = Camera.main;
+        pathPoints = GameObject.FindGameObjectsWithTag("wayPoints");
+        pathIndex = pathPoints.Length -1;
+
+        // pathList = pathList.OrderBy<path => tile.Name).ToList();
         StartCoroutine("FSM");
 	}
 	//Finite State machine to hold logic for switching AI states.
@@ -70,6 +74,9 @@ public class AI : MonoBehaviour {
                 case State.FLEEING:
                     Flee();
                     break;
+                case State.PATHFOLLOWING:
+                    Pathfollow();
+                    break;
             }
             yield return null;
         }
@@ -78,62 +85,107 @@ public class AI : MonoBehaviour {
 	void Update () {
         FSM();
 	}
-    void Pathfollow()
+    public void Pathfollow()
     {
-
+        if (pathIndex < 0) pathIndex = pathPoints.Length - 1;
+        //  Debug.Log(pathIndex);
+        target = pathPoints[pathIndex].transform;
+        distance = Vector3.Distance(target.position, currentTransform.position);
+        //    seekTarget();
+        //    Debug.Log(target.position - currentTransform.position);
+        seekTarget();
+        if (distance < 0.2f)
+        {
+            pathIndex--;
+         //   seekTarget();
+        }
     }
     void Flee()
     {
-        dest = target.transform.position;
-        linearAcceleration = currentTransform.position - dest;
+        linearAcceleration = currentTransform.position - target.position;
         linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
 
         linearVelocity += linearAcceleration;
-        linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
+        linearVelocity = clipValue(linearVelocity, maxLinearVelocity) ;
+        angularAcceleration = 0;
         //angular acceleration = 0;
         align();
-        currentTransform.position += linearVelocity * Time.deltaTime;
+        if (checkBounds(currentTransform.position + linearVelocity * Time.deltaTime))
+        {
+            currentTransform.position += linearVelocity * Time.deltaTime;
+        }
+        else
+        {
+            currentTransform.position = new Vector3(0, 0);
+        }
+      //  currentTransform.position += linearVelocity * Time.deltaTime;
 
+        distance = Vector3.Distance(currentTransform.position, dest);
     }
     void Seek()
     {
-        dest = target.transform.position;
-        linearAcceleration = dest - currentTransform.position;
+        seekTarget();
+
+        distance = Vector3.Distance(currentTransform.position, dest);
+
+        if (distance < 0.5f)
+        {
+         //   Debug.Log("arrived");
+        }
+
+    }
+    void seekTarget()
+    {
+        linearAcceleration = target.position - currentTransform.position;
         linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
 
         linearVelocity += linearAcceleration;
         linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
-        //angular acceleration = 0;
-        align();
+
+        angularAcceleration = 0;
+        //align();
         currentTransform.position += linearVelocity * Time.deltaTime;
 
-        /*    linearAcceleration.x = Mathf.Clamp(linearAcceleration.x, 0, maxLinearAcceleration.x);
-            linearAcceleration.y = Mathf.Clamp(linearAcceleration.y, maxLinearAcceleration.y * -1, maxLinearAcceleration.y);
+    }
+    void setWanderTarget()
+    {
+        if (state == State.WANDERING)
+        {
 
-            linearVelocity += linearAcceleration;
-            linearVelocity.x = Mathf.Clamp(linearVelocity.x, maxLinearVelocity.x * -1, maxLinearVelocity.x);
-            linearVelocity.y = Mathf.Clamp(linearVelocity.y, maxLinearVelocity.y * -1, maxLinearVelocity.y);*/
+            if (this.gameObject.name.ToLower() == "hunter")
+            {
+                wanderTarget = GameObject.FindWithTag("hunterTarget");
+            }
+            if (this.gameObject.name.ToLower() == "wolf")
+            {
+                wanderTarget = GameObject.FindWithTag("wolfTarget");
+            }
+            circle = wanderTarget;
+            target = wanderTarget.transform;
+            Vector3 circlePos = calculateTargetPosition(radius);
+            dest = target.transform.position + circlePos;
+            circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
 
-        //clip to max acceleration
-        //clip to max speed
-        //angular acceleration = 0;
-        currentTransform.position += linearVelocity * Time.deltaTime;
-
+        }
     }
     void Wander()
     {
         
-        float radius = this.gameObject.GetComponent<SphereCollider>().radius;
         linearAcceleration = (dest - currentTransform.position);
+     //   linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
+
         linearVelocity = linearAcceleration;
-        distance = linearVelocity.magnitude;
+       // linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
+
+        distance = Vector3.Distance(currentTransform.position, dest);
+
         currentTransform.position += linearVelocity * Time.deltaTime;
 
         if (linearVelocity != Vector3.zero) align();
         
         if (distance < 0.5f)
         {
-            Vector3 circlePos = calculateTargetPosition(0.5f);
+            Vector3 circlePos = calculateTargetPosition(radius);
             circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
             Vector2 temp = (Vector2)circle.transform.position + (Vector2)circlePos;
 
@@ -150,7 +202,13 @@ public class AI : MonoBehaviour {
             }
         }
     }
+    void stopWandering()
+    {
+        //switch state
 
+        //turn off target
+        circle.SetActive(false);
+    }
     Vector3 calculateTargetPosition(float radius)
     {
         Vector3 randomPointOnCircle = Random.insideUnitCircle;
@@ -161,8 +219,13 @@ public class AI : MonoBehaviour {
     Vector3 clipValue(Vector3 toClip, Vector3 clipRange)
     {
         Vector3 res;
-        toClip.x = Mathf.Clamp(toClip.x, clipRange.x * -1, clipRange.x);
-        toClip.y = Mathf.Clamp(toClip.y, clipRange.y * -1, clipRange.y);
+        if (toClip.x > clipRange.x) toClip.x = clipRange.x;
+        if (toClip.x < clipRange.x * -1) toClip.x = clipRange.x * -1;
+        if (toClip.y > clipRange.y) toClip.y = clipRange.y;
+        if (toClip.y < clipRange.y * -1) toClip.y = clipRange.y * -1;
+
+        // toClip.x = Mathf.Clamp(toClip.x, clipRange.x * -1, clipRange.x);
+       // toClip.y = Mathf.Clamp(toClip.y, clipRange.y * -1, clipRange.y);
         res = toClip;
         return res;
     }
@@ -187,11 +250,11 @@ public class AI : MonoBehaviour {
     }
     void align()
     {
+        angularVelocity += angularAcceleration;
         float angle = Mathf.Atan2(linearVelocity.y, linearVelocity.x) * Mathf.Rad2Deg;
         //rotate towards target
-        Debug.Log(Vector3.right);
         Quaternion q = Quaternion.AngleAxis(angle, Vector3.forward);
-        currentTransform.rotation = Quaternion.RotateTowards(currentTransform.rotation, q, maxRotationSpeed * Time.deltaTime);
+        currentTransform.rotation = q;// Quaternion.RotateTowards(currentTransform.rotation, q, angularVelocity * Time.deltaTime);
     }
 }
    
