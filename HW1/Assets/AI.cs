@@ -9,16 +9,11 @@ public class AI : MonoBehaviour {
     private bool alive;
     public Vector3 linearVelocity, linearAcceleration;
     public float angularAcceleration, angularVelocity;
-    public Vector3 maxLinearVelocity, maxLinearAcceleration;
 
-    public float maxSpeed;
-    public float maxAcceleration;
+    public float maxSpeed, maxAcceleration;
     public float maxRotationSpeed = 10.0f;
     private GameObject circle;
-    public struct steering{
-        float angular;
-        float linear;
-    }
+
     public float targetDistance;
     public float distance;
     public float time;
@@ -28,10 +23,7 @@ public class AI : MonoBehaviour {
     public Transform target;
     public GameObject wanderTarget;
     public Camera cam;
-    public GameObject label;
-    public string TYPE;
     private float radius;
-    int dir;
 
     private int pathIndex;
     private GameObject[] pathPoints;
@@ -50,6 +42,9 @@ public class AI : MonoBehaviour {
         
         alive = true;
         radius = this.gameObject.GetComponent<SphereCollider>().radius / 2f;
+        GameObject.FindWithTag("wolfTarget").transform.position = GameObject.Find("Wolf").transform.position;
+        GameObject.FindWithTag("hunterTarget").transform.position = GameObject.Find("Hunter").transform.position;
+
         if (state == State.WANDERING) setWanderTarget();
         cam = Camera.main;
         pathPoints = GameObject.FindGameObjectsWithTag("wayPoints");
@@ -100,11 +95,13 @@ public class AI : MonoBehaviour {
     }
     void Flee()
     {
+        //Avoid pursuer
         linearAcceleration = transform.position - target.position;
         linearVelocity += linearAcceleration * Time.deltaTime;
         clipAccelVeloc();
         angularAcceleration = 0;
         align();
+        //check if fleeing within bounds
         if (checkBounds(transform.position + linearVelocity * Time.deltaTime))
         {
             transform.position += linearVelocity * Time.deltaTime;
@@ -143,6 +140,7 @@ public class AI : MonoBehaviour {
             {
                 wanderTarget = GameObject.FindWithTag("wolfTarget");
             }
+            //calculate the new position inside the unit circle and in front of AI
             circle = wanderTarget;
             target = wanderTarget.transform;
             Vector3 circlePos = calculateTargetPosition(radius);
@@ -170,6 +168,11 @@ public class AI : MonoBehaviour {
         if (distance < circ.xrad / 2)
         {
             Arrive(distance);
+            distance = Vector3.Distance(transform.position, predictedTarget);
+            if (distance < 0.2f)
+            {
+                Debug.Log("arrived");
+            }
         }
         else
         {
@@ -184,24 +187,23 @@ public class AI : MonoBehaviour {
         LineRenderer rad = GameObject.Find("arriveRadius").GetComponent<LineRenderer>();
         rad.enabled = true;
         rad.transform.position = target.position;
-        
+
         //calculate target speed
         float targetSpeed = maxSpeed * (dist / 1.25f);
         Vector3 dir = (target.position - transform.position).normalized;
         Vector3 targetVelocity = dir * targetSpeed;
-        targetVelocity = dir * targetSpeed;
         //Acceleration tries to get to the target velocity
         linearVelocity = targetVelocity - linearVelocity;
 
-        if (linearVelocity.magnitude > targetSpeed)
+      
+        linearVelocity += linearAcceleration;
+        //linearVelocity = linearVelocity;
+        if (linearVelocity.magnitude > maxAcceleration)
         {
-            linearVelocity = linearVelocity.normalized;
-            linearVelocity *= targetSpeed;
+            linearVelocity.Normalize();
+            linearVelocity *= maxAcceleration;
         }
-        linearVelocity = linearVelocity / timeToTarget;
-        linearAcceleration = linearVelocity;
-
-        transform.position += linearVelocity * Time.deltaTime;
+        transform.position += linearVelocity;
 
     }
     void Evade() { }
@@ -237,18 +239,21 @@ public class AI : MonoBehaviour {
         {
             GameObject hunter = GameObject.Find("Hunter");
             float distToHunter = Vector3.Distance(hunter.transform.position, transform.position);
+            //when the wolf runs into the hunter while wandering
             if (distToHunter < 2f)
             {
+                //set the hunter to purse the wolf
                 AI HunterAI = hunter.GetComponent<AI>();
                 HunterAI.state = State.PURSUING;
                 HunterAI.target = transform;
+
                 state = State.EVADING;
                 target = HunterAI.transform;
-                Debug.Log(distToHunter);
             }
-            Debug.DrawLine(hunter.transform.position, transform.position);
+            Debug.DrawLine(hunter.transform.position, transform.position, Color.green);
         }
     }
+    //generate point on unit circle
     Vector3 calculateTargetPosition(float radius)
     {
         Vector3 randomPointOnCircle = Random.insideUnitCircle;
@@ -256,13 +261,13 @@ public class AI : MonoBehaviour {
         randomPointOnCircle *= radius;
         return randomPointOnCircle;
     }
+    //clip velocity and acceleration to max values
     void clipAccelVeloc()
     {
-        linearVelocity = linearVelocity.normalized;
-        linearVelocity *= maxSpeed;
-
-        linearAcceleration = linearAcceleration.normalized;
-        linearAcceleration *= maxAcceleration;
+            linearVelocity = linearVelocity.normalized;
+            linearVelocity *= maxSpeed;
+            linearAcceleration = linearAcceleration.normalized;
+            linearAcceleration *= maxAcceleration;
 
     }
     void displayState()
