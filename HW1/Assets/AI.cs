@@ -11,13 +11,18 @@ public class AI : MonoBehaviour {
     public float angularAcceleration, angularVelocity;
     public Vector3 maxLinearVelocity, maxLinearAcceleration;
 
+    public float maxSpeed;
+    public float maxAcceleration;
     public float maxRotationSpeed = 10.0f;
     private GameObject circle;
-
+    public struct steering{
+        float angular;
+        float linear;
+    }
     public float targetDistance;
     public float distance;
-
-    private Transform currentTransform;
+    public float time;
+    public float timeToTarget;
     public Vector3 dest;
 
     public Transform target;
@@ -34,9 +39,7 @@ public class AI : MonoBehaviour {
     public enum State
     {
         WANDERING,
-        SEEKING,
-        FLEEING,
-        HUNTING,
+        EVADING,
         PURSUING,
         PATHFOLLOWING
     }
@@ -45,17 +48,13 @@ public class AI : MonoBehaviour {
     // Use this for initialization
     void Start () {
         
-        dir = 1;
         alive = true;
         radius = this.gameObject.GetComponent<SphereCollider>().radius / 2f;
-        pathIndex = 0;
-        currentTransform = this.gameObject.transform;
         if (state == State.WANDERING) setWanderTarget();
         cam = Camera.main;
         pathPoints = GameObject.FindGameObjectsWithTag("wayPoints");
-        pathIndex = pathPoints.Length -1;
-
-        // pathList = pathList.OrderBy<path => tile.Name).ToList();
+        pathPoints = pathPoints.OrderBy(path => path.name).ToArray();
+        pathIndex = 0;// pathPoints.Length -1;
         StartCoroutine("FSM");
 	}
 	//Finite State machine to hold logic for switching AI states.
@@ -68,14 +67,14 @@ public class AI : MonoBehaviour {
                 case State.WANDERING:
                     Wander();
                     break;
-                case State.SEEKING:
-                    Seek();
-                    break;
-                case State.FLEEING:
+                case State.EVADING:
                     Flee();
                     break;
                 case State.PATHFOLLOWING:
                     Pathfollow();
+                    break;
+                case State.PURSUING:
+                    Pursue();
                     break;
             }
             yield return null;
@@ -83,70 +82,54 @@ public class AI : MonoBehaviour {
     }
 	// Update is called once per frame
 	void Update () {
+        displayState();
         FSM();
 	}
     public void Pathfollow()
     {
-        if (pathIndex < 0) pathIndex = pathPoints.Length - 1;
-        //  Debug.Log(pathIndex);
+        if (pathIndex > pathPoints.Length - 1) pathIndex = 0;
         target = pathPoints[pathIndex].transform;
-        distance = Vector3.Distance(target.position, currentTransform.position);
-        //    seekTarget();
-        //    Debug.Log(target.position - currentTransform.position);
-        seekTarget();
-        if (distance < 0.2f)
+        distance = Vector3.Distance(target.position, transform.position);
+        seekTarget(target.position);
+        align();
+
+        if (distance < 1f)
         {
-            pathIndex--;
-         //   seekTarget();
+            pathIndex++;
         }
     }
     void Flee()
     {
-        linearAcceleration = currentTransform.position - target.position;
-        linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
-
-        linearVelocity += linearAcceleration;
-        linearVelocity = clipValue(linearVelocity, maxLinearVelocity) ;
+        linearAcceleration = transform.position - target.position;
+        linearVelocity += linearAcceleration * Time.deltaTime;
+        clipAccelVeloc();
         angularAcceleration = 0;
-        //angular acceleration = 0;
         align();
-        if (checkBounds(currentTransform.position + linearVelocity * Time.deltaTime))
+        if (checkBounds(transform.position + linearVelocity * Time.deltaTime))
         {
-            currentTransform.position += linearVelocity * Time.deltaTime;
+            transform.position += linearVelocity * Time.deltaTime;
         }
         else
         {
-            currentTransform.position = new Vector3(0, 0);
+            transform.position = new Vector3(transform.position.x / -2, 0);
         }
-      //  currentTransform.position += linearVelocity * Time.deltaTime;
-
-        distance = Vector3.Distance(currentTransform.position, dest);
+        distance = Vector3.Distance(transform.position, dest);
     }
-    void Seek()
+    void seekTarget(Vector3 target)
     {
-        seekTarget();
-
-        distance = Vector3.Distance(currentTransform.position, dest);
-
-        if (distance < 0.5f)
-        {
-         //   Debug.Log("arrived");
-        }
-
-    }
-    void seekTarget()
-    {
-        linearAcceleration = target.position - currentTransform.position;
-        linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
-
+        //Move towards target at full acceleration
+        linearAcceleration = target - transform.position;
+        linearAcceleration.Normalize();
+        linearAcceleration *= maxAcceleration;
+        //clip velocity
         linearVelocity += linearAcceleration;
-        linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
-
-        angularAcceleration = 0;
-        //align();
-        currentTransform.position += linearVelocity * Time.deltaTime;
-
+        linearVelocity.Normalize();
+        linearVelocity *= maxSpeed;
+        //move ai
+        transform.position += linearVelocity * Time.deltaTime;
     }
+    //if the AI is a hunter or a wolf in WANDERING state
+    //create a new wander target
     void setWanderTarget()
     {
         if (state == State.WANDERING)
@@ -164,50 +147,107 @@ public class AI : MonoBehaviour {
             target = wanderTarget.transform;
             Vector3 circlePos = calculateTargetPosition(radius);
             dest = target.transform.position + circlePos;
-            circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
+            circle.transform.position = transform.position + (transform.right * targetDistance);
 
         }
     }
+    void Pursue()
+    {
+        //Find the circle that gets drawn upon arrival.
+        drawCircle circ = GameObject.Find("arriveRadius").GetComponent<drawCircle>();
+        //Check Scene view for this line that is drawn when an AI is in pursuit, it draws a line from
+        //current AI position to target AI position
+        Debug.DrawLine(target.position + (target.right * 1), transform.position, Color.green, 2f);
+        //predict target future movement
+        Vector3 predictedTarget = target.position + (target.right * 1);
+        //calculate steering towards future position
+        seekTarget(predictedTarget);
+        
+        distance = Vector3.Distance(transform.position, target.position);
+        align();
+
+        //This checks if current is within the radius of the arrival circle
+        if (distance < circ.xrad / 2)
+        {
+            Arrive(distance);
+        }
+        else
+        {
+            LineRenderer rad = GameObject.Find("arriveRadius").GetComponent<LineRenderer>();
+            rad.enabled = false;
+
+        }
+    }
+    void Arrive(float dist)
+    {
+        //Find circle object to draw when arriving
+        LineRenderer rad = GameObject.Find("arriveRadius").GetComponent<LineRenderer>();
+        rad.enabled = true;
+        rad.transform.position = target.position;
+        
+        //calculate target speed
+        float targetSpeed = maxSpeed * (dist / 1.25f);
+        Vector3 dir = (target.position - transform.position).normalized;
+        Vector3 targetVelocity = dir * targetSpeed;
+        targetVelocity = dir * targetSpeed;
+        //Acceleration tries to get to the target velocity
+        linearVelocity = targetVelocity - linearVelocity;
+
+        if (linearVelocity.magnitude > targetSpeed)
+        {
+            linearVelocity = linearVelocity.normalized;
+            linearVelocity *= targetSpeed;
+        }
+        linearVelocity = linearVelocity / timeToTarget;
+        linearAcceleration = linearVelocity;
+
+        transform.position += linearVelocity * Time.deltaTime;
+
+    }
+    void Evade() { }
     void Wander()
     {
-        
-        linearAcceleration = (dest - currentTransform.position);
-     //   linearAcceleration = clipValue(linearAcceleration, maxLinearAcceleration);
+     //   dest = target.position;
+        linearAcceleration = (dest - transform.position);
 
         linearVelocity = linearAcceleration;
-       // linearVelocity = clipValue(linearVelocity, maxLinearVelocity);
+        //clip accel/velocity to max accel/speed
+        clipAccelVeloc();
 
-        distance = Vector3.Distance(currentTransform.position, dest);
+        distance = Vector3.Distance(transform.position, dest);
 
-        currentTransform.position += linearVelocity * Time.deltaTime;
+        transform.position += linearVelocity * Time.deltaTime;
 
         if (linearVelocity != Vector3.zero) align();
         
         if (distance < 0.5f)
         {
             Vector3 circlePos = calculateTargetPosition(radius);
-            circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance);
+            circle.transform.position = transform.transform.position + (transform.right * targetDistance);
             Vector2 temp = (Vector2)circle.transform.position + (Vector2)circlePos;
 
             bool check = checkBounds(temp);
             if (check)
             {
-                circle.transform.position = currentTransform.transform.position + (currentTransform.right * targetDistance) * dir;
+                circle.transform.position = transform.transform.position + (transform.right * targetDistance);
                 dest = (Vector2)circle.transform.position + (Vector2)circlePos;
-                //  Debug.DrawRay(transform.position, (dest.normalized), Color.green, 10f, false);
-            }
-            else
-            {
-                dir *= -1;
             }
         }
-    }
-    void stopWandering()
-    {
-        //switch state
-
-        //turn off target
-        circle.SetActive(false);
+        if (this.gameObject.name.ToLower() == "wolf")
+        {
+            GameObject hunter = GameObject.Find("Hunter");
+            float distToHunter = Vector3.Distance(hunter.transform.position, transform.position);
+            if (distToHunter < 2f)
+            {
+                AI HunterAI = hunter.GetComponent<AI>();
+                HunterAI.state = State.PURSUING;
+                HunterAI.target = transform;
+                state = State.EVADING;
+                target = HunterAI.transform;
+                Debug.Log(distToHunter);
+            }
+            Debug.DrawLine(hunter.transform.position, transform.position);
+        }
     }
     Vector3 calculateTargetPosition(float radius)
     {
@@ -216,22 +256,39 @@ public class AI : MonoBehaviour {
         randomPointOnCircle *= radius;
         return randomPointOnCircle;
     }
-    Vector3 clipValue(Vector3 toClip, Vector3 clipRange)
+    void clipAccelVeloc()
     {
-        Vector3 res;
-        if (toClip.x > clipRange.x) toClip.x = clipRange.x;
-        if (toClip.x < clipRange.x * -1) toClip.x = clipRange.x * -1;
-        if (toClip.y > clipRange.y) toClip.y = clipRange.y;
-        if (toClip.y < clipRange.y * -1) toClip.y = clipRange.y * -1;
+        linearVelocity = linearVelocity.normalized;
+        linearVelocity *= maxSpeed;
 
-        // toClip.x = Mathf.Clamp(toClip.x, clipRange.x * -1, clipRange.x);
-       // toClip.y = Mathf.Clamp(toClip.y, clipRange.y * -1, clipRange.y);
-        res = toClip;
-        return res;
+        linearAcceleration = linearAcceleration.normalized;
+        linearAcceleration *= maxAcceleration;
+
+    }
+    void displayState()
+    {
+        string name = this.gameObject.name.ToLower();
+        TextMesh mesh;
+        switch (name)
+        {
+            case ("wolf"):
+                mesh = GameObject.Find("WolfState").GetComponent<TextMesh>();
+                mesh.text = state.ToString();
+                break;
+            case ("red"):
+                mesh = GameObject.Find("RedState").GetComponent<TextMesh>();
+                mesh.text = state.ToString();
+                break;
+            case ("hunter"):
+                mesh = GameObject.Find("HunterState").GetComponent<TextMesh>();
+                mesh.text = state.ToString();
+                break;
+        }
+
+        //  Debug.Log(name);
     }
     bool checkBounds(Vector3 pos)
     {
-
         Vector3 p1 = cam.ViewportToWorldPoint(new Vector3(0, 0, cam.nearClipPlane));
         Vector3 p2 = cam.ViewportToWorldPoint(new Vector3(1, 0, cam.nearClipPlane));
         Vector3 p3 = cam.ViewportToWorldPoint(new Vector3(1, 1, cam.nearClipPlane));
@@ -250,11 +307,12 @@ public class AI : MonoBehaviour {
     }
     void align()
     {
-        angularVelocity += angularAcceleration;
+   //     angularVelocity += 1;
         float angle = Mathf.Atan2(linearVelocity.y, linearVelocity.x) * Mathf.Rad2Deg;
         //rotate towards target
         Quaternion q = Quaternion.AngleAxis(angle, Vector3.forward);
-        currentTransform.rotation = q;// Quaternion.RotateTowards(currentTransform.rotation, q, angularVelocity * Time.deltaTime);
+        transform.rotation = q;
+        Quaternion.RotateTowards(transform.rotation, q, 60f * Time.deltaTime);
     }
 }
    

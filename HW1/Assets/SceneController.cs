@@ -11,8 +11,8 @@ public class SceneController : MonoBehaviour {
         wolf = GameObject.Find("Wolf");
         red = GameObject.Find("Red");
      //   red.SetActive(false);
-        hunter.SetActive(false);
-        wolf.SetActive(false);
+       // hunter.SetActive(false);
+      //  wolf.SetActive(false);
     }
 	
 	// Update is called once per frame
@@ -24,8 +24,6 @@ public class SceneController : MonoBehaviour {
           //  red.transform.position = path[path.Length-1].transform.position;
             Debug.Log(red.transform.position);
         }
-        // red.GetComponent<AI>().Pathfollow();
-        red.GetComponent<AI>().state = AI.State.PATHFOLLOWING;
 
     }
 }
