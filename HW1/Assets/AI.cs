@@ -1,4 +1,22 @@
-﻿using UnityEngine;
+﻿/*
+ * TOMMY FANG
+ * GAME AI HW 1
+ * STATES: PATHFOLLOWING, PURSUING, EVADING, WANDERING
+ * The scene is a little bit buggy 
+ * When the game is played, the hunter and wolf start off in the wander state
+ * Little RED starts her path using PATHFOLLOWING to Grandma's house.
+ * When they wander next to each other, the HUNTER goes into PURSUING state 
+ * the WOLF goes into the evading state.
+ * The code for avoiding the target seems to be working and the prediction for pursue seek commands.
+ * I wasn't sure what to do when the fleeing target left the bounds of the view, so I just resset the position to 0,0, which makes it buggy.
+ * arrive code is implemented exactly as instructed, but can't find error in it.
+  */
+
+  /* ** IMPORTANT **
+   * You can modify the AI state on play using the State field in the AI script inside the INSPECTOR
+   * Other values like max speed/acceleration/timeToTarget and target transforms can be modified there.
+   * */
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -192,18 +210,28 @@ public class AI : MonoBehaviour {
         float targetSpeed = maxSpeed * (dist / 1.25f);
         Vector3 dir = (target.position - transform.position).normalized;
         Vector3 targetVelocity = dir * targetSpeed;
-        //Acceleration tries to get to the target velocity
         linearVelocity = targetVelocity - linearVelocity;
+        time += Time.deltaTime;
+        if (time > timeToTarget) time = 0f;
 
-      
+        //Acceleration tries to get to the target velocity
         linearVelocity += linearAcceleration;
-        //linearVelocity = linearVelocity;
-        if (linearVelocity.magnitude > maxAcceleration)
+        //clip velocity
+        if (linearVelocity.magnitude > maxSpeed)
         {
             linearVelocity.Normalize();
-            linearVelocity *= maxAcceleration;
+            linearVelocity *= maxSpeed;
         }
-        transform.position += linearVelocity;
+        //clip acceleration
+        if (linearAcceleration.magnitude > maxAcceleration)
+        {
+            linearAcceleration.Normalize();
+            linearAcceleration *= maxAcceleration;
+        }
+        //move based on time
+        //not sure why this doesn't work, followed slides exactly
+        linearVelocity = linearVelocity / timeToTarget;
+        transform.position += linearVelocity * Time.deltaTime;
 
     }
     void Evade() { }
